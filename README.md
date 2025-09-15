@@ -1,4 +1,4 @@
-# Free Poke AI - Personalised Onboarding Agent
+# Open Poke - Personalised Onboarding Agent
 
 Poke AI is an intelligent agent that automatically researches users by analyzing their Gmail data and web presence, then engages in natural conversations with personalized insights. Built with [Composio](https://composio.dev)
 
