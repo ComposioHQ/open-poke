@@ -13,6 +13,7 @@ class Message(BaseModel):
     content: str
     message_type: str  # "user", "agent", "system"
     timestamp: datetime = datetime.now()
+    message_id: str = ""
 
 
 class UserMemory(BaseModel):

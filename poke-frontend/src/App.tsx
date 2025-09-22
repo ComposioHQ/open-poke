@@ -22,17 +22,92 @@ function App() {
     scrollToBottom();
   }, [messages, isTyping]);
 
+  // Save messages to localStorage whenever messages change
   useEffect(() => {
-    // Check if user is already connected (e.g., from localStorage)
+    if (messages.length > 0) {
+      localStorage.setItem('poke_messages', JSON.stringify(messages));
+    }
+  }, [messages]);
+
+  // Save typing and loading states
+  useEffect(() => {
+    localStorage.setItem('poke_is_typing', JSON.stringify(isTyping));
+  }, [isTyping]);
+
+  useEffect(() => {
+    localStorage.setItem('poke_is_loading', JSON.stringify(isLoading));
+  }, [isLoading]);
+
+  useEffect(() => {
+    // Check if user is already connected and restore state
     const savedUserId = localStorage.getItem('poke_user_id');
+    const savedMessages = localStorage.getItem('poke_messages');
+    const savedIsTyping = localStorage.getItem('poke_is_typing');
+    const savedIsLoading = localStorage.getItem('poke_is_loading');
+
     if (savedUserId) {
       setUserId(savedUserId);
-      // Load conversation history or send initial message
-      handleInitialMessage(savedUserId);
+      
+      // Restore messages if they exist
+      if (savedMessages) {
+        try {
+          const parsedMessages = JSON.parse(savedMessages).map((msg: any) => ({
+            ...msg,
+            timestamp: new Date(msg.timestamp)
+          }));
+          setMessages(parsedMessages);
+        } catch (error) {
+          console.error('Failed to parse saved messages:', error);
+        }
+      }
+
+      // Restore typing state
+      if (savedIsTyping) {
+        try {
+          setIsTyping(JSON.parse(savedIsTyping));
+        } catch (error) {
+          console.error('Failed to parse saved typing state:', error);
+        }
+      }
+
+      // Restore loading state
+      if (savedIsLoading) {
+        try {
+          setIsLoading(JSON.parse(savedIsLoading));
+        } catch (error) {
+          console.error('Failed to parse saved loading state:', error);
+        }
+      }
+
+      // Only send initial message if there are no saved messages
+      if (!savedMessages || savedMessages === '[]') {
+        handleInitialMessage(savedUserId);
+      }
     }
   }, []);
 
+  const clearStoredState = () => {
+    localStorage.removeItem('poke_messages');
+    localStorage.removeItem('poke_is_typing');
+    localStorage.removeItem('poke_is_loading');
+  };
+
+  const handleDisconnect = () => {
+    localStorage.removeItem('poke_user_id');
+    clearStoredState();
+    setUserId(null);
+    setMessages([]);
+    setIsTyping(false);
+    setIsLoading(false);
+  };
+
   const handleConnectionEstablished = (newUserId: string) => {
+    // Clear previous state when establishing new connection
+    clearStoredState();
+    setMessages([]);
+    setIsTyping(false);
+    setIsLoading(false);
+    
     setUserId(newUserId);
     localStorage.setItem('poke_user_id', newUserId);
     handleInitialMessage(newUserId);
@@ -111,6 +186,69 @@ function App() {
     poll();
   };
 
+  const pollForMessageResponse = async (messageId: string) => {
+    let attempts = 0;
+    const maxAttempts = 30; // 2.5 minutes of polling (30 * 5 seconds)
+    
+    const poll = async () => {
+      try {
+        const responseData = await apiClient.getMessageResponse(messageId);
+        
+        if (responseData.status === 'completed') {
+          // Add the agent response
+          const agentMessage: Message = {
+            id: `msg_${Date.now()}`,
+            content: responseData.response,
+            sender: 'agent',
+            timestamp: new Date(),
+          };
+          
+          setMessages(prev => [...prev, agentMessage]);
+          setIsTyping(false);
+          return;
+        } else if (responseData.status === 'error') {
+          // Handle error
+          const errorMessage: Message = {
+            id: `msg_${Date.now()}`,
+            content: "Sorry, I encountered an error processing your message.",
+            sender: 'agent',
+            timestamp: new Date(),
+          };
+          
+          setMessages(prev => [...prev, errorMessage]);
+          setIsTyping(false);
+          return;
+        }
+        
+        // Still processing, continue polling
+        attempts++;
+        if (attempts < maxAttempts) {
+          setTimeout(poll, 5000); // Poll every 5 seconds
+        } else {
+          setIsTyping(false);
+          // Timeout fallback
+          const timeoutMessage: Message = {
+            id: `msg_timeout`,
+            content: "I'm taking longer than usual to respond. Please try your message again.",
+            sender: 'agent',
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, timeoutMessage]);
+        }
+      } catch (error) {
+        console.error('Failed to poll for response:', error);
+        attempts++;
+        if (attempts < maxAttempts) {
+          setTimeout(poll, 5000);
+        } else {
+          setIsTyping(false);
+        }
+      }
+    };
+    
+    poll();
+  };
+
   const handleSendMessage = async (content: string) => {
     if (!userId) return;
 
@@ -127,8 +265,8 @@ function App() {
     setIsLoading(true);
 
     try {
-      // Send message to backend
-      await apiClient.sendMessage(userId, content);
+      // Send message to backend and get message_id
+      const result = await apiClient.sendMessage(userId, content);
       
       // Update message status to sent
       setMessages(prev => 
@@ -139,21 +277,11 @@ function App() {
         )
       );
 
-      // Show typing indicator
+      // Show typing indicator and poll for specific message response
       setIsTyping(true);
-
-      // Simulate agent response (in real app, this would come from WebSocket/polling)
-      setTimeout(() => {
-        const agentMessage: Message = {
-          id: `msg_${Date.now() + 1}`,
-          content: "Thanks for your message! I'm analyzing your request and cross-referencing it with your Gmail data. Let me get back to you with some insights...",
-          sender: 'agent',
-          timestamp: new Date(),
-        };
-        
-        setMessages(prev => [...prev, agentMessage]);
-        setIsTyping(false);
-      }, 2000);
+      
+      // Poll for the specific message response
+      pollForMessageResponse(result.message_id);
 
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -195,9 +323,9 @@ function App() {
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
               <User className="w-8 h-8 text-gray-400" />
             </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Welcome to Poke AI!</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Welcome to Open Poke!</h3>
             <p className="text-gray-500 max-w-sm">
-              I'm analyzing your Gmail data to learn about you. Send me a message to get started!
+              Send me a message to get started!
             </p>
           </div>
         ) : (

@@ -80,8 +80,7 @@ export function ConnectionSetup({ onConnectionEstablished }: ConnectionSetupProp
             <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <Mail className="w-8 h-8 text-blue-600" />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Welcome to Poke AI</h1>
-            <p className="text-gray-600">Connect your Gmail to get started with AI-powered email analysis</p>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">Welcome to Open Poke</h1>
           </div>
 
           <form onSubmit={handleUserInfoSubmit} className="space-y-4">

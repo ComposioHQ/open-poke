@@ -136,11 +136,11 @@ async def send_message(request: MessageRequest):
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
-        # Queue the message for processing
-        success = await message_processor.queue_user_message(request.user_id, request.content)
+        # Queue the message for processing and get message_id
+        message_id = await message_processor.queue_user_message(request.user_id, request.content)
         
-        if success:
-            return {"status": "queued"}
+        if message_id:
+            return {"message_id": message_id, "status": "queued"}
         else:
             raise HTTPException(status_code=500, detail="Failed to queue message")
             
@@ -149,6 +149,21 @@ async def send_message(request: MessageRequest):
     except Exception as e:
         print(f"Error: {e}")
         raise HTTPException(status_code=500, detail="Message processing failed")
+
+
+@app.get("/messages/{message_id}/response")
+async def get_message_response(message_id: str):
+    """Get response for a specific message"""
+    try:
+        response_data = message_processor.get_message_response(message_id)
+        if response_data.get("status") == "not_found":
+            raise HTTPException(status_code=404, detail="Message not found")
+        return response_data
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get message response")
 
 
 @app.get("/users/{user_id}/memory")

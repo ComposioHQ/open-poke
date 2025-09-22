@@ -84,6 +84,16 @@ export class ApiClient {
     return response.json();
   }
 
+  async getMessageResponse(messageId: string): Promise<any> {
+    const response = await fetch(`${this.baseUrl}/messages/${messageId}/response`);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get message response: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
   async getUserMemory(userId: string): Promise<any> {
     const response = await fetch(`${this.baseUrl}/users/${userId}/memory`);
     

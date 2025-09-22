@@ -15,6 +15,7 @@ class MessageProcessor:
         self.users = users
         self.memories = memories
         self.processing = False
+        self.message_responses = {}  # Track responses by message_id
     
     async def start_processing(self):
         """Start the message processing loop"""
@@ -49,40 +50,66 @@ class MessageProcessor:
     async def _process_message(self, message: Message):
         """Process a single message"""
         try:
-            logger.info(f"Processing message from user {message.user_id}")
+            logger.info(f"Processing message {message.message_id} from user {message.user_id}")
             
             # Process through agent
             response = await self.agent.process_message(message.user_id, message.content)
             
-            # Store the response for the frontend to retrieve
+            # Store the response mapped to message_id
+            self.message_responses[message.message_id] = {
+                "response": response,
+                "timestamp": __import__('datetime').datetime.now().isoformat(),
+                "status": "completed"
+            }
+            
+            # Store the conversation for history
             self._add_conversation(message.user_id, message.content, "user")
             self._add_conversation(message.user_id, response, "agent")
             
-            logger.info(f"Generated response for {message.user_id}: {response[:100]}...")
+            logger.info(f"Generated response for message {message.message_id}: {response[:100]}...")
             
         except Exception as e:
-            logger.error(f"Error processing message from {message.user_id}: {type(e).__name__}")
-            # Log full error for debugging in development
+            logger.error(f"Error processing message {message.message_id}: {type(e).__name__}")
+            # Store error response
+            self.message_responses[message.message_id] = {
+                "response": "Sorry, I encountered an error processing your message.",
+                "timestamp": __import__('datetime').datetime.now().isoformat(),
+                "status": "error"
+            }
             logger.debug(f"Full error details: {e}")
     
     
-    async def queue_user_message(self, user_id: str, content: str) -> bool:
-        """Queue a user message for processing"""
+    async def queue_user_message(self, user_id: str, content: str) -> str:
+        """Queue a user message for processing and return message_id"""
         try:
+            import uuid
+            message_id = str(uuid.uuid4())
+            
             message = Message(
                 user_id=user_id,
                 content=content,
-                message_type="user"
+                message_type="user",
+                message_id=message_id
             )
             
+            # Mark as processing
+            self.message_responses[message_id] = {
+                "response": None,
+                "timestamp": __import__('datetime').datetime.now().isoformat(),
+                "status": "processing"
+            }
+            
             self.message_queue.appendleft(message)
-            return True
+            return message_id
             
         except Exception as e:
             logger.error(f"Error queuing message: {type(e).__name__}")
-            # Log full error for debugging in development
             logger.debug(f"Full error details: {e}")
-            return False
+            return ""
+    
+    def get_message_response(self, message_id: str) -> dict:
+        """Get response for a specific message_id"""
+        return self.message_responses.get(message_id, {"status": "not_found"})
     
     def _add_conversation(self, user_id: str, message: str, message_type: str) -> bool:
         """Add conversation to user memory"""
